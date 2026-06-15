@@ -2,13 +2,6 @@
 
 A handy script to manage your `tmux` sessions for `agy` (Antigravity CLI). It automatically creates, attaches, or deletes isolated tmux sessions without needing complex commands, running directly from your current working directory.
 
-## 🤔 Why is this useful?
-
-If you run Antigravity CLI on a remote server via SSH, you face a few challenges that this script elegantly solves:
-- **Connection Drops:** If your SSH connection disconnects, your `agy` session and its ongoing tasks won't die. You can simply reconnect and type `gem` to resume exactly where you left off.
-- **Multitasking:** Need to run multiple agents in parallel for different projects? Use `gem 1`, `gem 2`, etc., to spawn and jump between isolated background sessions in seconds.
-- **Convenience:** Replaces tedious `tmux new-session`, `tmux attach`, or `tmux kill-session` commands with a fast, single-word shortcut `gem`.
-
 ## 🚀 Quick Install
 
 Run this single command to install `gem` globally on your system:
@@ -16,6 +9,13 @@ Run this single command to install `gem` globally on your system:
 ```bash
 curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/install.sh | bash
 ```
+
+## 🤔 Why is this useful?
+
+If you run Antigravity CLI on a remote server via SSH, you face a few challenges that this script elegantly solves:
+- **Connection Drops:** If your SSH connection disconnects, your `agy` session and its ongoing tasks won't die. You can simply reconnect and type `gem` to resume exactly where you left off.
+- **Multitasking:** Need to run multiple agents in parallel for different projects? Use `gem 1`, `gem 2`, etc., to spawn and jump between isolated background sessions in seconds.
+- **Convenience:** Replaces tedious `tmux new-session`, `tmux attach`, or `tmux kill-session` commands with a fast, single-word shortcut `gem`.
 
 ## 📖 Usage
 
