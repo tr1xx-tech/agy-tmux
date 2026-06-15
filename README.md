@@ -1,4 +1,4 @@
-# agy-gem
+# agy-tmux
 
 A handy script to manage your tmux sessions for `agy` (Antigravity CLI). It automatically creates, attaches, or deletes isolated tmux sessions without needing complex tmux commands, running directly from your current working directory.
 
@@ -7,7 +7,7 @@ A handy script to manage your tmux sessions for `agy` (Antigravity CLI). It auto
 Run this single command to install `gem` globally on your system:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-gem/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/install.sh | bash
 ```
 
 ## Usage
