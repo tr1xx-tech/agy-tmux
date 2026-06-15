@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+# Enable native scrolling (mouse support) and turn off status bar globally
+tmux set-option -g mouse on 2>/dev/null
+tmux set-option -g status off 2>/dev/null
+
+
+
+# Default values
+SUFFIX=""
+CONTINUE=false
+DELETE=false
+LIST=false
+HELP=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help|h|help)
+            HELP=true
+            shift
+            ;;
+        -s|--session)
+            SUFFIX="$2"
+            shift 2
+            ;;
+        -d|--delete)
+            DELETE=true
+            if [[ -n "$2" && "$2" != -* && "$2" != "c" && "$2" != "l" ]]; then
+                SUFFIX="$2"
+                shift 2
+            else
+                shift
+            fi
+            ;;
+        -l|--list|l|list)
+            LIST=true
+            shift
+            ;;
+        -c|--continue|c|continue)
+            CONTINUE=true
+            shift
+            ;;
+        d|delete)
+            DELETE=true
+            if [[ -n "$2" && "$2" != -* && "$2" != "c" && "$2" != "l" ]]; then
+                SUFFIX="$2"
+                shift 2
+            else
+                shift
+            fi
+            ;;
+        *)
+            # If it's a number or other argument, treat as suffix
+            if [[ -z "$SUFFIX" ]]; then
+                SUFFIX="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Print help
+if [ "$HELP" = true ]; then
+    echo "Usage: gem [options] [suffix]"
+    echo ""
+    echo "Manage tmux sessions for agy (Antigravity CLI)."
+    echo ""
+    echo "Commands & Options:"
+    echo "  -h, --help, h, help      Show this help message"
+    echo "  -s, --session SUFFIX     Open or create session agy-<suffix>"
+    echo "  -d, --delete SUFFIX      Delete session agy-<suffix>"
+    echo "  -l, --list, l, list      List all active tmux sessions"
+    echo "  -c, --continue, c        Start agy with the last dialog (agy -c) if session is created"
+    echo "  [suffix]                 Open or create session agy-<suffix> (positional)"
+    echo "  d [suffix]               Delete session agy-<suffix> (positional)"
+    echo ""
+    echo "Examples:"
+    echo "  gem                      Open/create session 'agy' and run 'agy'"
+    echo "  gem 1                    Open/create session 'agy-1' and run 'agy'"
+    echo "  gem c                    Open/create session 'agy' and run 'agy -c'"
+    echo "  gem c 1                  Open/create session 'agy-1' and run 'agy -c'"
+    echo "  gem -d 1 / gem d 1       Delete session 'agy-1'"
+    echo "  gem -l / gem l           List all active tmux sessions"
+    exit 0
+fi
+
+# Determine session name
+if [ -z "$SUFFIX" ]; then
+    SESSION_NAME="agy"
+else
+    SESSION_NAME="agy-${SUFFIX}"
+fi
+
+# Handle list action
+if [ "$LIST" = true ]; then
+    if ! tmux list-sessions 2>/dev/null; then
+        echo "No active tmux sessions."
+    fi
+    exit 0
+fi
+
+# Handle delete action
+if [ "$DELETE" = true ]; then
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        tmux kill-session -t "$SESSION_NAME"
+        echo "Session '$SESSION_NAME' deleted successfully."
+    else
+        echo "Session '$SESSION_NAME' does not exist."
+    fi
+    exit 0
+fi
+
+# Check if session exists
+if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    # Determine command to run
+    if [ "$CONTINUE" = true ]; then
+        CMD="agy -c"
+    else
+        CMD="agy"
+    fi
+
+    # Create session in detached mode, with current working directory
+    tmux new-session -d -s "$SESSION_NAME"
+    # Explicitly enable mouse scrolling and turn off status bar for this session
+    tmux set-option -t "$SESSION_NAME" mouse on 2>/dev/null
+    tmux set-option -t "$SESSION_NAME" status off 2>/dev/null
+    # Source .bashrc to load proxy rules/functions, run agy, and exit the session when done
+    tmux send-keys -t "$SESSION_NAME" "source ~/.bashrc 2>/dev/null; $CMD; exit" C-m
+fi
+
+# Attach to the session
+if [ -n "$TMUX" ]; then
+    tmux switch-client -t "$SESSION_NAME"
+else
+    tmux attach-session -t "$SESSION_NAME"
+fi
