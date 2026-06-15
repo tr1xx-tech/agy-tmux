@@ -1,8 +1,8 @@
-# agy-tmux
+# 💎 agy-tmux
 
 A handy script to manage your tmux sessions for `agy` (Antigravity CLI). It automatically creates, attaches, or deletes isolated tmux sessions without needing complex tmux commands, running directly from your current working directory.
 
-## Quick Install
+## 🚀 Quick Install
 
 Run this single command to install `gem` globally on your system:
 
@@ -10,23 +10,29 @@ Run this single command to install `gem` globally on your system:
 curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/install.sh | bash
 ```
 
-## Usage
+## 📖 Usage
 
-Simply type `gem` to start or attach to the default `agy` session.
+Simply type `gem` to start or attach to the default `agy` session. For more advanced features, check out the options below:
 
-```bash
-# Open/create default session and run agy
-gem
+```text
+Usage: gem [options] [suffix]
 
-# Show help and all available commands
-gem -h
+Manage tmux sessions for agy (Antigravity CLI).
 
-# Open/create session 'agy-1'
-gem 1
+Commands & Options:
+  -h, --help, h, help      Show this help message
+  -s, --session SUFFIX     Open or create session agy-<suffix>
+  -d, --delete SUFFIX      Delete session agy-<suffix>
+  -l, --list, l, list      List all active tmux sessions
+  -c, --continue, c        Start agy with the last dialog (agy -c) if session is created
+  [suffix]                 Open or create session agy-<suffix> (positional)
+  d [suffix]               Delete session agy-<suffix> (positional)
 
-# Delete session 'agy-1'
-gem -d 1
-
-# List all active sessions
-gem -l
+Examples:
+  gem                      Open/create session 'agy' and run 'agy'
+  gem 1                    Open/create session 'agy-1' and run 'agy'
+  gem c                    Open/create session 'agy' and run 'agy -c'
+  gem c 1                  Open/create session 'agy-1' and run 'agy -c'
+  gem -d 1 / gem d 1       Delete session 'agy-1'
+  gem -l / gem l           List all active tmux sessions
 ```
