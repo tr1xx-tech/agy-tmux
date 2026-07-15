@@ -83,6 +83,10 @@ echo -e "${GREEN}OK${NC}"
 # Check/install mitmproxy (required for region bypass)
 echo -ne "  -> Checking for mitmdump (mitmproxy)... "
 if ! command -v mitmdump &> /dev/null; then
+    if command -v pkg &> /dev/null; then
+        echo -e "${BLUE}Pre-installing Termux python dependencies...${NC}"
+        pkg install -y python-cryptography python-brotli python-bcrypt >/dev/null 2>&1
+    fi
     PIP_CMD=$(command -v pip3 || command -v pip)
     if [ -n "$PIP_CMD" ]; then
         $PIP_CMD install --break-system-packages mitmproxy 2>/dev/null || $PIP_CMD install mitmproxy 2>/dev/null
