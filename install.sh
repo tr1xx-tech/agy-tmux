@@ -8,18 +8,45 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}==>${NC} ${GREEN}Starting agy-tmux installation...${NC}"
 
-# Use sudo if we are not root
+# Configure sudo wrapper
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
-    SUDO="sudo"
+    if command -v sudo &> /dev/null; then
+        SUDO="sudo"
+    fi
 fi
+
+# Detect installation directory
+BIN_DIR="/usr/local/bin"
+if [ -n "$PREFIX" ] && [ -d "$PREFIX/bin" ]; then
+    BIN_DIR="$PREFIX/bin"
+fi
+
+install_package() {
+    local pkg=$1
+    if command -v pkg &> /dev/null; then
+        pkg install -y "$pkg" >/dev/null 2>&1
+    elif command -v apt-get &> /dev/null; then
+        $SUDO apt-get update >/dev/null 2>&1
+        $SUDO apt-get install -y "$pkg" >/dev/null 2>&1
+    elif command -v dnf &> /dev/null; then
+        $SUDO dnf install -y "$pkg" >/dev/null 2>&1
+    elif command -v yum &> /dev/null; then
+        $SUDO yum install -y "$pkg" >/dev/null 2>&1
+    elif command -v pacman &> /dev/null; then
+        $SUDO pacman -Sy --noconfirm "$pkg" >/dev/null 2>&1
+    elif command -v apk &> /dev/null; then
+        $SUDO apk add "$pkg" >/dev/null 2>&1
+    elif command -v brew &> /dev/null; then
+        brew install "$pkg" >/dev/null 2>&1
+    fi
+}
 
 # Check for tmux
 echo -ne "  -> Checking for tmux... "
 if ! command -v tmux &> /dev/null; then
     echo -e "${BLUE}Installing tmux...${NC}"
-    $SUDO apt-get update >/dev/null 2>&1
-    $SUDO apt-get install -y tmux >/dev/null 2>&1
+    install_package tmux
     if ! command -v tmux &> /dev/null; then
         echo -e "${RED}Failed to install tmux!${NC}"
         echo "     Please install tmux manually and try again."
@@ -32,8 +59,8 @@ echo -e "${GREEN}OK${NC}"
 echo -ne "  -> Installing gem script... "
 
 curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/gem -o /tmp/gem
-$SUDO mv /tmp/gem /usr/local/bin/gem
-$SUDO chmod +x /usr/local/bin/gem
+$SUDO mv /tmp/gem "${BIN_DIR}/gem"
+$SUDO chmod +x "${BIN_DIR}/gem"
 
 echo -e "${GREEN}Done!${NC}"
 echo ""
