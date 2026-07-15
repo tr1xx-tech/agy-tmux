@@ -1,137 +1,215 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python3
+import sys, os, subprocess, time, json, socket, shutil
 
-# Enable native scrolling (mouse support) and turn off status bar globally
-tmux set-option -g mouse on 2>/dev/null
-tmux set-option -g status off 2>/dev/null
+# ==============================================================================
+# 1. MITMPROXY ADDON INTERCEPTION LOGIC
+# (Loaded automatically when mitmdump runs: mitmdump -s /path/to/gem)
+# ==============================================================================
+try:
+    from mitmproxy import http
+    def response(flow: http.HTTPFlow) -> None:
+        try:
+            if "onboardUser" in flow.request.path:
+                body = flow.response.get_text()
+                if flow.response.status_code == 403 or "not eligible" in body.lower() or "PERMISSION_DENIED" in body or flow.response.status_code != 200:
+                    flow.response.status_code = 200
+                    flow.response.set_text(json.dumps({
+                        "name": "operations/onboard-user-success",
+                        "done": True,
+                        "response": {
+                            "@type": "type.googleapis.com/google.internal.cloud.code.v1internal.OnboardUserResponse",
+                            "status": {"statusCode": "OK"}
+                        }
+                    }))
+            elif "loadCodeAssist" in flow.request.path:
+                body = flow.response.get_text()
+                try:
+                    data = json.loads(body)
+                    if "ineligibleTiers" in data:
+                        allowed = data.get("allowedTiers", [])
+                        if not allowed:
+                            allowed = [{"id": "standard-tier", "name": "Antigravity", "isDefault": True}]
+                        data["allowedTiers"] = allowed
+                        del data["ineligibleTiers"]
+                        flow.response.set_text(json.dumps(data))
+                except Exception:
+                    pass
+            elif "regionCode" in flow.response.get_text() and ("fetchUserInfo" in flow.request.path or "fetchAdminControls" in flow.request.path):
+                try:
+                    data = json.loads(flow.response.get_text())
+                    if "regionCode" in data and data["regionCode"] != "US":
+                        data["regionCode"] = "US"
+                        flow.response.set_text(json.dumps(data))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+except ImportError:
+    pass
 
+# ==============================================================================
+# 2. INTERNAL PROXY RUNNER WORKER
+# (Invoked automatically inside the tmux session when gem starts agy)
+# ==============================================================================
+def run_proxy_worker(cmd_args):
+    if not shutil.which("mitmdump"):
+        print("\n[Error] mitmdump not found!")
+        print("mitmproxy is required by agy-tmux for region check bypass.")
+        print("Please reinstall using install.sh (`curl -sL ... | bash`) or install mitmproxy manually (`pip install mitmproxy`).\n")
+        sys.exit(1)
 
+    real_agy = os.path.expanduser("~/.local/bin/agy")
+    if not os.path.exists(real_agy):
+        real_agy = shutil.which("agy") or "/root/.local/bin/agy"
+        if not os.path.exists(real_agy):
+            print("Error: agy executable not found!")
+            sys.exit(1)
 
-# Default values
-SUFFIX=""
-CONTINUE=false
-DELETE=false
-LIST=false
-HELP=false
+    cert_file = os.path.expanduser("~/.mitmproxy/mitmproxy-ca-cert.pem")
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        port = s.getsockname()[1]
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -h|--help|h|help)
-            HELP=true
-            shift
-            ;;
-        -s|--session)
-            SUFFIX="$2"
-            shift 2
-            ;;
-        -d|--delete)
-            DELETE=true
-            if [[ -n "$2" && "$2" != -* && "$2" != "c" && "$2" != "l" ]]; then
-                SUFFIX="$2"
-                shift 2
-            else
-                shift
-            fi
-            ;;
-        -l|--list|l|list)
-            LIST=true
-            shift
-            ;;
-        -c|--continue|c|continue)
-            CONTINUE=true
-            shift
-            ;;
-        d|delete)
-            DELETE=true
-            if [[ -n "$2" && "$2" != -* && "$2" != "c" && "$2" != "l" ]]; then
-                SUFFIX="$2"
-                shift 2
-            else
-                shift
-            fi
-            ;;
-        *)
-            # If it's a number or other argument, treat as suffix
-            if [[ -z "$SUFFIX" ]]; then
-                SUFFIX="$1"
-            fi
-            shift
-            ;;
-    esac
-done
+    env = os.environ.copy()
+    env["MITMPROXY_ADDON_RUN"] = "1"
 
-# Print help
-if [ "$HELP" = true ]; then
-    echo "Usage: gem [options] [suffix]"
-    echo ""
-    echo "Manage tmux sessions for agy (Antigravity CLI)."
-    echo ""
-    echo "Commands & Options:"
-    echo "  -h, --help, h, help      Show this help message"
-    echo "  -s, --session SUFFIX     Open or create session agy-<suffix>"
-    echo "  -d, --delete SUFFIX      Delete session agy-<suffix>"
-    echo "  -l, --list, l, list      List all active tmux sessions"
-    echo "  -c, --continue, c        Start agy with the last dialog (agy -c) if session is created"
-    echo "  [suffix]                 Open or create session agy-<suffix> (positional)"
-    echo "  d [suffix]               Delete session agy-<suffix> (positional)"
-    echo ""
-    echo "Examples:"
-    echo "  gem                      Open/create session 'agy' and run 'agy'"
-    echo "  gem 1                    Open/create session 'agy-1' and run 'agy'"
-    echo "  gem c                    Open/create session 'agy' and run 'agy -c'"
-    echo "  gem c 1                  Open/create session 'agy-1' and run 'agy -c'"
-    echo "  gem -d 1 / gem d 1       Delete session 'agy-1'"
-    echo "  gem -l / gem l           List all active tmux sessions"
-    exit 0
-fi
+    proxy_proc = subprocess.Popen(
+        ["mitmdump", "-q", "-p", str(port), "-s", os.path.abspath(__file__)],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
-# Determine session name
-if [ -z "$SUFFIX" ]; then
-    SESSION_NAME="agy"
-else
-    SESSION_NAME="agy-${SUFFIX}"
-fi
+    try:
+        for _ in range(100):
+            time.sleep(0.05)
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                    break
+            except Exception:
+                pass
 
-# Handle list action
-if [ "$LIST" = true ]; then
-    if ! tmux list-sessions 2>/dev/null; then
-        echo "No active tmux sessions."
-    fi
-    exit 0
-fi
+        env["HTTP_PROXY"] = f"http://127.0.0.1:{port}"
+        env["HTTPS_PROXY"] = f"http://127.0.0.1:{port}"
+        env["SSL_CERT_FILE"] = cert_file
 
-# Handle delete action
-if [ "$DELETE" = true ]; then
-    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        tmux kill-session -t "$SESSION_NAME"
-        echo "Session '$SESSION_NAME' deleted successfully."
-    else
-        echo "Session '$SESSION_NAME' does not exist."
-    fi
-    exit 0
-fi
+        run_cmd = [real_agy] + cmd_args
+        res = subprocess.run(run_cmd, env=env)
+        sys.exit(res.returncode)
+    finally:
+        proxy_proc.terminate()
+        try:
+            proxy_proc.wait(timeout=1)
+        except Exception:
+            proxy_proc.kill()
 
-# Check if session exists
-if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    # Determine command to run
-    if [ "$CONTINUE" = true ]; then
-        CMD="agy -c"
-    else
-        CMD="agy"
-    fi
+# ==============================================================================
+# 3. TMUX SESSION MANAGEMENT & CLI ENTRYPOINT
+# ==============================================================================
+def print_help():
+    print("Usage: gem [options] [suffix]")
+    print("")
+    print("Manage tmux sessions for agy (Antigravity CLI) with built-in region bypass.")
+    print("")
+    print("Commands & Options:")
+    print("  -h, --help, h, help      Show this help message")
+    print("  -s, --session SUFFIX     Open or create session agy-<suffix>")
+    print("  -d, --delete SUFFIX      Delete session agy-<suffix> (or 'agy' if no suffix)")
+    print("  -l, --list, l, list      List all active tmux sessions")
+    print("  -c, --continue, c        Start agy with the last dialog (agy -c) if session is created")
+    print("  [suffix]                 Open or create session agy-<suffix> (positional)")
+    print("  d [suffix]               Delete session agy-<suffix> (positional)")
+    print("")
+    print("Examples:")
+    print("  gem                      Open/create session 'agy' and run 'agy' (with bypass)")
+    print("  gem 1                    Open/create session 'agy-1' and run 'agy' (with bypass)")
+    print("  gem c                    Open/create session 'agy' and run 'agy -c' (with bypass)")
+    print("  gem c 1                  Open/create session 'agy-1' and run 'agy -c' (with bypass)")
+    print("  gem -d 1 / gem d 1       Delete session 'agy-1'")
+    print("  gem -l / gem l           List all active tmux sessions")
 
-    # Create session in detached mode, with current working directory
-    tmux new-session -d -s "$SESSION_NAME"
-    # Explicitly enable mouse scrolling and turn off status bar for this session
-    tmux set-option -t "$SESSION_NAME" mouse on 2>/dev/null
-    tmux set-option -t "$SESSION_NAME" status off 2>/dev/null
-    # Source .bashrc to load proxy rules/functions, run agy, and exit the session when done
-    tmux send-keys -t "$SESSION_NAME" "source ~/.bashrc 2>/dev/null; $CMD; exit" C-m
-fi
+def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "--internal-proxy-run":
+        cmd_args = ["-c"] if len(sys.argv) >= 3 and sys.argv[2] == "-c" else sys.argv[2:]
+        run_proxy_worker(cmd_args)
+        return
 
-# Attach to the session
-if [ -n "$TMUX" ]; then
-    tmux switch-client -t "$SESSION_NAME"
-else
-    tmux attach-session -t "$SESSION_NAME"
-fi
+    subprocess.run(["tmux", "set-option", "-g", "mouse", "on"], stderr=subprocess.DEVNULL, check=False)
+    subprocess.run(["tmux", "set-option", "-g", "status", "off"], stderr=subprocess.DEVNULL, check=False)
+
+    suffix = ""
+    cont = False
+    delete = False
+    list_sessions = False
+    help_flag = False
+
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help", "h", "help"):
+            help_flag = True
+            i += 1
+        elif arg in ("-s", "--session"):
+            if i + 1 < len(args):
+                suffix = args[i+1]
+                i += 2
+            else:
+                i += 1
+        elif arg in ("-d", "--delete", "d", "delete"):
+            delete = True
+            if i + 1 < len(args) and not args[i+1].startswith("-") and args[i+1] not in ("c", "l"):
+                suffix = args[i+1]
+                i += 2
+            else:
+                i += 1
+        elif arg in ("-l", "--list", "l", "list"):
+            list_sessions = True
+            i += 1
+        elif arg in ("-c", "--continue", "c", "continue"):
+            cont = True
+            i += 1
+        else:
+            if not suffix:
+                suffix = arg
+            i += 1
+
+    if help_flag:
+        print_help()
+        sys.exit(0)
+
+    if list_sessions:
+        res = subprocess.run(["tmux", "list-sessions"], check=False)
+        if res.returncode != 0:
+            print("No active tmux sessions.")
+        sys.exit(0)
+
+    session_name = f"agy-{suffix}" if suffix else "agy"
+
+    if delete:
+        res = subprocess.run(["tmux", "has-session", "-t", session_name], stderr=subprocess.DEVNULL, check=False)
+        if res.returncode == 0:
+            subprocess.run(["tmux", "kill-session", "-t", session_name], check=False)
+            print(f"Session '{session_name}' deleted successfully.")
+        else:
+            print(f"Session '{session_name}' does not exist.")
+        sys.exit(0)
+
+    res = subprocess.run(["tmux", "has-session", "-t", session_name], stderr=subprocess.DEVNULL, check=False)
+    if res.returncode != 0:
+        subprocess.run(["tmux", "new-session", "-d", "-s", session_name], check=False)
+        subprocess.run(["tmux", "set-option", "-t", session_name, "mouse", "on"], stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(["tmux", "set-option", "-t", session_name, "status", "off"], stderr=subprocess.DEVNULL, check=False)
+
+        self_path = os.path.abspath(__file__)
+        internal_arg = "-c" if cont else ""
+        cmd = f"source ~/.bashrc 2>/dev/null; '{self_path}' --internal-proxy-run {internal_arg}; exit"
+        subprocess.run(["tmux", "send-keys", "-t", session_name, cmd, "C-m"], check=False)
+
+    if os.environ.get("TMUX"):
+        subprocess.run(["tmux", "switch-client", "-t", session_name], check=False)
+    else:
+        subprocess.run(["tmux", "attach-session", "-t", session_name], check=False)
+
+if __name__ == "__main__":
+    if not os.environ.get("MITMPROXY_ADDON_RUN"):
+        main()
