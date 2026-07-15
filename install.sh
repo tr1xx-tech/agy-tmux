@@ -8,20 +8,58 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}==>${NC} ${GREEN}Starting agy-tmux installation...${NC}"
 
+# Configure sudo wrapper
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
-    SUDO="sudo"
+    if command -v sudo &> /dev/null; then
+        SUDO="sudo"
+    fi
 fi
+
+# Detect installation directory
+BIN_DIR="/usr/local/bin"
+if [ -n "$PREFIX" ] && [ -d "$PREFIX/bin" ]; then
+    BIN_DIR="$PREFIX/bin"
+fi
+
+install_package() {
+    local pkg=$1
+    if command -v pkg &> /dev/null; then
+        if [ "$pkg" = "python3" ]; then
+            pkg="python"
+        elif [ "$pkg" = "python3-pip" ] || [ "$pkg" = "python3-venv" ]; then
+            return 0
+        fi
+        pkg install -y "$pkg" >/dev/null 2>&1
+    elif command -v apt-get &> /dev/null; then
+        $SUDO apt-get update >/dev/null 2>&1
+        $SUDO apt-get install -y "$pkg" >/dev/null 2>&1
+    elif command -v dnf &> /dev/null; then
+        if [ "$pkg" = "python3" ]; then pkg="python3"; fi
+        $SUDO dnf install -y "$pkg" >/dev/null 2>&1
+    elif command -v yum &> /dev/null; then
+        $SUDO yum install -y "$pkg" >/dev/null 2>&1
+    elif command -v pacman &> /dev/null; then
+        if [ "$pkg" = "python3" ]; then pkg="python"; fi
+        if [ "$pkg" = "python3-pip" ]; then return 0; fi
+        $SUDO pacman -Sy --noconfirm "$pkg" >/dev/null 2>&1
+    elif command -v apk &> /dev/null; then
+        $SUDO apk add "$pkg" >/dev/null 2>&1
+    elif command -v brew &> /dev/null; then
+        if [ "$pkg" = "python3" ]; then pkg="python"; fi
+        if [ "$pkg" = "python3-pip" ] || [ "$pkg" = "python3-venv" ]; then return 0; fi
+        brew install "$pkg" >/dev/null 2>&1
+    fi
+}
 
 # Check for tmux
 echo -ne "  -> Checking for tmux... "
 if ! command -v tmux &> /dev/null; then
     echo -e "${BLUE}Installing tmux...${NC}"
-    $SUDO apt-get update >/dev/null 2>&1
-    $SUDO apt-get install -y tmux >/dev/null 2>&1
+    install_package tmux
     if ! command -v tmux &> /dev/null; then
         echo -e "${RED}Failed to install tmux!${NC}"
-        echo "     Please install tmux manually (e.g. apt install tmux) and try again."
+        echo "     Please install tmux manually and try again."
         exit 1
     fi
 fi
@@ -30,12 +68,13 @@ echo -e "${GREEN}OK${NC}"
 # Check for python3
 echo -ne "  -> Checking for python3... "
 if ! command -v python3 &> /dev/null || ! command -v pip3 &> /dev/null && ! command -v pip &> /dev/null; then
-    echo -e "${BLUE}Installing python3 and pip...${NC}"
-    $SUDO apt-get update >/dev/null 2>&1
-    $SUDO apt-get install -y python3 python3-pip python3-venv >/dev/null 2>&1
+    echo -e "${BLUE}Installing python3...${NC}"
+    install_package python3
+    install_package python3-pip
+    install_package python3-venv
     if ! command -v python3 &> /dev/null; then
         echo -e "${RED}Failed to install python3!${NC}"
-        echo "     Please install python3 manually (e.g. apt install python3 python3-pip) and try again."
+        echo "     Please install python3 manually and try again."
         exit 1
     fi
 fi
@@ -61,14 +100,14 @@ echo -ne "  -> Installing gem script... "
 
 # Use local gem if running inside cloned repo, otherwise fetch from GitHub
 if [ -f "$(dirname "$0")/gem" ]; then
-    $SUDO cp "$(dirname "$0")/gem" /usr/local/bin/gem
+    $SUDO cp "$(dirname "$0")/gem" "${BIN_DIR}/gem"
 else
     BRANCH="${AGY_TMUX_BRANCH:-bypass}"
     curl -sL "https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/${BRANCH}/gem" -o /tmp/gem
-    $SUDO mv /tmp/gem /usr/local/bin/gem
+    $SUDO mv /tmp/gem "${BIN_DIR}/gem"
 fi
 
-$SUDO chmod +x /usr/local/bin/gem
+$SUDO chmod +x "${BIN_DIR}/gem"
 
 echo -e "${GREEN}Done!${NC}"
 echo ""
