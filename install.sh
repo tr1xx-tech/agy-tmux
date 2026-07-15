@@ -8,22 +8,28 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}==>${NC} ${GREEN}Starting agy-tmux installation...${NC}"
 
-# Check for tmux
-echo -ne "  -> Checking for tmux... "
-if ! command -v tmux &> /dev/null; then
-    echo -e "${RED}Not found!${NC}"
-    echo "     Please install tmux and try again."
-    exit 1
-fi
-echo -e "${GREEN}OK${NC}"
-
-# Download and install gem
-echo -ne "  -> Installing gem script... "
 # Use sudo if we are not root
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
     SUDO="sudo"
 fi
+
+# Check for tmux
+echo -ne "  -> Checking for tmux... "
+if ! command -v tmux &> /dev/null; then
+    echo -e "${BLUE}Installing tmux...${NC}"
+    $SUDO apt-get update >/dev/null 2>&1
+    $SUDO apt-get install -y tmux >/dev/null 2>&1
+    if ! command -v tmux &> /dev/null; then
+        echo -e "${RED}Failed to install tmux!${NC}"
+        echo "     Please install tmux manually and try again."
+        exit 1
+    fi
+fi
+echo -e "${GREEN}OK${NC}"
+
+# Download and install gem
+echo -ne "  -> Installing gem script... "
 
 curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/gem -o /tmp/gem
 $SUDO mv /tmp/gem /usr/local/bin/gem
