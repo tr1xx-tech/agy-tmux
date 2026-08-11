@@ -58,7 +58,7 @@ echo -e "${GREEN}OK${NC}"
 # Download and install gem
 echo -ne "  -> Installing gem script... "
 
-curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/gem -o /tmp/gem
+curl -fsSL https://raw.githubusercontent.com/zenyxx-xd/Antigravity-CLI-tmux/main/gem -o /tmp/gem
 $SUDO mv /tmp/gem "${BIN_DIR}/gem"
 $SUDO chmod +x "${BIN_DIR}/gem"
 

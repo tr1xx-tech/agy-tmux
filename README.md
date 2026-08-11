@@ -7,7 +7,7 @@ A handy script to manage your `tmux` sessions for `agy` (Antigravity CLI). It au
 Run this single command to install `gem` globally on your system:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/tr1xx-tech/agy-tmux/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zenyxx-xd/Antigravity-CLI-tmux/main/install.sh | bash
 ```
 
 ## 🤔 Why is this useful?
